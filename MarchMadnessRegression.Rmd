@@ -1,0 +1,193 @@
+---
+title: "STT180 Group Project"
+author: "Ty Siemens"
+date: "2025-04-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+# 2024 March Madness Analysis
+
+## Methodology
+
+Once each team has qualified for the tournament, the goal is to investigate how far a team will then make it, and statistically, who will be the team most likely to hoist the trophy come April? After sorting for only the teams that qualified for the tournament in 2024 and manually inputting what round they were eliminated in, we’ll give them each a “round score”. A “round score” is a score weighted heavier for teams that made it farther in the tournament (or more “rounds”, hence the name). For instance, first-round exits get 5 points, Sweet Sixteen exits get 20 points, Final Four exits get 55 points, and the champion gets 100 points. This is because it’s more difficult and more uncommon for a team to make it farther, and they should be credited fairly. These “round scores” will then be the label for a multiple regression analysis involving every offensive, defensive, and team stat available. Additionally, feature selection will be applied to narrow down the most influential features involved in team success in the tournament. Because the round values are a subjective value with no real quantitative value, the results of the feature selection will then be investigated independently, and multiple regression analysis will not be performed other than to narrow down the generally significant features. However, while the created “round scores” will not be used in analysis, the round in which a team was eliminated will still be tracked and used as a metric of team success when analyzing the results. Once these features are found, correlational tests and visualization will be done both among the features and with tournament success to verify the validity of the features for predicting outcomes.
+
+## Data Cleaning
+
+```{r}
+CBBdata <- read.csv("CBBData.csv")
+```
+
+```{r}
+# find teams that qualified for the tournament
+
+CBBdata <- CBBdata %>% 
+  mutate(NCAATourney = str_detect(School, "NCAA"))
+```
+
+```{r}
+round.64.eliminated <- c('Stetson NCAA', 'Florida Atlantic NCAA', 'UAB NCAA', 'Auburn NCAA', 'Brigham Young NCAA', 'Morehead State NCAA', 'Drake NCAA', 'South Dakota State NCAA', 'Virginia NCAA', 'Montana State NCAA', 'Grambling NCAA', 'TCU NCAA', 'McNeese State NCAA', 'Samford NCAA', 'South Carolina NCAA', 'Akron NCAA', 'Colorado State NCAA', "Saint Peter's NCAA", 'Longwood NCAA', 'Nebraska NCAA', 'Wisconsin NCAA', 'Vermont NCAA', 'Texas Tech NCAA', 'Kentucky NCAA', 'Florida NCAA', 'Western Kentucky NCAA', 'Boise State NCAA', 'Howard NCAA', 'Wagner NCAA', 'Mississippi State NCAA', "Saint Mary's (CA) NCAA", 'College of Charleston NCAA', 'New Mexico NCAA', 'Colgate NCAA', 'Nevada NCAA', 'Long Beach State NCAA')
+
+round.32.eliminated <- c('Northwestern NCAA', 'Yale NCAA', 'Duquesne NCAA', 'Washington State NCAA', 'Utah State NCAA', 'Kansas NCAA', 'Oregon NCAA', 'Texas NCAA', 'Texas A&M NCAA', 'James Madison NCAA', 'Oakland NCAA', 'Colorado NCAA', 'Michigan State NCAA', 'Grand Canyon NCAA', 'Baylor NCAA', 'Dayton NCAA')
+
+round.16.eliminated <- c('San Diego State NCAA', 'Iowa State NCAA', 'Gonzaga NCAA', 'Creighton NCAA', 'Houston NCAA', 'Marquette NCAA', 'North Carolina NCAA', 'Arizona NCAA')
+
+round.8.eliminated <- c('Clemson NCAA', 'Duke NCAA', 'Tennessee NCAA', 'Illinois NCAA')
+
+round.4.eliminated <- c('Alabama NCAA', 'NC State NCAA')
+
+round.2.eliminated <- c('Purdue NCAA')
+
+champion <- c('Connecticut NCAA')
+
+```
+
+```{r}
+# add row for round eliminated
+
+CBBdata$round.eliminated <- 0
+
+
+for (school in round.64.eliminated) {
+  CBBdata$round.eliminated[CBBdata$School == school] <- 64
+}
+
+for (school in round.32.eliminated) {
+  CBBdata$round.eliminated[CBBdata$School == school] <- 32
+}
+
+for (school in round.16.eliminated) {
+  CBBdata$round.eliminated[CBBdata$School == school] <- 16
+}
+
+for (school in round.8.eliminated) {
+  CBBdata$round.eliminated[CBBdata$School == school] <- 8
+}
+
+for (school in round.4.eliminated) {
+   CBBdata$round.eliminated[CBBdata$School == school] <- 4
+}
+
+for (school in round.2.eliminated) {
+   CBBdata$round.eliminated[CBBdata$School == school] <- 2
+}
+
+ for (school in champion) {
+   CBBdata$round.eliminated[CBBdata$School == school] <- 1
+}
+```
+
+```{r}
+# add weighted scored based on round eliminated
+
+round.weights <- c(
+  "64" = 5,
+  "32" = 10,
+  "16" = 20,
+  "8"  = 35,
+  "4"  = 55,
+  "2"  = 80,
+  "1"  = 100
+)
+
+CBBdata <- CBBdata %>%
+  mutate(round.score = round.weights[as.character(round.eliminated)])
+```
+
+```{r}
+tourney.teams <- CBBdata %>% 
+  filter(NCAATourney == TRUE)
+```
+
+## Multiple Regression + Significant Feature Identification
+
+### Multiple Regression 1 (with SRS)
+
+```{r}
+mod.fit <- lm(round.score~W.L. + SRS + SOS + Conf.W + Conf.L + Tm.Points + Opp.Points + FG + FGA + FG. + X3P +  X3PA + FT + FTA + FT. + ORB + TRB + AST + STL + BLK + TOV + PF, tourney.teams)
+
+mod.fit %>% 
+  broom::tidy()
+
+mod.fit %>% 
+  broom::glance()
+```
+
+```{r}
+step(object = mod.fit, direction = "backward", trace = FALSE)
+
+best.mod.fit <- lm(formula = round.score ~ SRS + Conf.W, data = tourney.teams)
+
+best.mod.fit %>%
+  broom::glance()
+
+best.mod.fit %>%
+  broom::tidy()
+```
+
+### Multiple Regression 2 (without SRS)
+
+Because SRS is an independent calculator by Sports Reference (described in the results), it is not a widely tracked statistic in NCAA basketball. While SRS is a significant indicator of team success, I ran a second multiple regression without it to test for primary significant indicator statistics
+
+```{r}
+mod.fit2.0 <- lm(round.score~W.L. + SOS + Conf.W + Conf.L + Tm.Points + Opp.Points + FG + FGA + FG. + X3P +  X3PA + FT + FTA + FT. + ORB + TRB + AST + STL + BLK + TOV + PF, tourney.teams)
+
+mod.fit2.0 %>% 
+  broom::tidy()
+
+mod.fit2.0 %>% 
+  broom::glance()
+```
+
+```{r}
+step(object = mod.fit2.0, direction = "backward", trace = FALSE)
+
+best.mod.fit2.0 <- lm(formula = round.score ~ SOS + Conf.W, data = tourney.teams)
+
+best.mod.fit2.0 %>%
+  broom::glance()
+
+best.mod.fit2.0 %>%
+  broom::tidy()
+```
+
+## Results
+
+Most significant indicators: `SRS`, `SOS`, and `Conf.W`
+
+After multiple regression feature selection, the model settles on 3 factors for tourney success: Strength of schedule (SOS), conference wins, and Sports Reference's “Simple Rating System” (SRS), or simply an independently calculated measurement of how strong a team is. Interestingly enough, these are very valid results, as SRS is a metric that more or less utilizes both SOS and conference wins in its calculation. Specifically, it “uses a team's point differential and strength of schedule to assign a rating to each team”, and since the majority of teams' games (and consequently point differential) are against conference opponents, it tracks that SRS as well as some of it’s key components were the most significant feature in the set. Then, each pair of stats (SRS, SOS, and conference wins, for a total of three pairings), scatter plots were graphed to find visual correlations between the features while accounting for team success. Additionally, box plots were made for each feature, separated by team tournament success based on round elimination. Due to the number of graphs, only the most notable scatterplot and boxplot will be analyzed.
+
+### Correlation scatter plot for each relationship (SRS vs SOS)
+
+```{r}
+ggplot(tourney.teams, aes(SRS, SOS, color = factor(round.eliminated))) + geom_point(size=3) +
+  scale_color_brewer(palette = "Oranges", direction = -1) + theme(panel.background = element_rect(fill = "#cccccc")) + labs(title = "Stength of Schedule by Overall Strength", x = "Team Strength (SRS)", y = "Strength of Schedule (SOS)", color = "Round Eliminated")
+
+ggplot(tourney.teams, aes(SRS, Conf.W, color = factor(round.eliminated))) + geom_point(size=3) +
+  scale_color_brewer(palette = "Oranges", direction = -1) + theme(panel.background = element_rect(fill = "#cccccc")) + labs(title = "Conference Wins by Overall Strength", x = "Team Strength (SRS)", y = "Conference Wins", color = "Round Eliminated")
+
+ggplot(tourney.teams, aes(SOS, Conf.W, color = factor(round.eliminated))) + geom_point(size=3) +
+  scale_color_brewer(palette = "Oranges", direction = -1) + theme(panel.background = element_rect(fill = "#cccccc")) + labs(title = "Conference Wins by Strength of Schedule", x = "Strength of Schedule (SOS)", y = "Conference Wins", color = "Round Eliminated")
+```
+
+In the SRS vs SOS scatter plot, a strong positive correlation can be seen between team strength and strength of schedule, where ‘better’ teams played stronger opponents throughout the season. However, arguably more important to the breakdown is how these two features impacted how far a team made it. The relationship is significant: every team that qualified for the Sweet Sixteen is in the far right corner, with some of the Elite Eight teams even farther along the extreme than that. This validates the model that SRS and SOS are significant features in predicting March Madness success.
+
+### Box plot for each statistic by round eliminated (SOS by round eliminated)
+
+```{r}
+ggplot(tourney.teams, aes(SOS, factor(round.eliminated))) + geom_boxplot() + labs(title = 'Strength of Schedule by Round Eliminated', x = 'Strength of Schedule', y = 'Round Eliminated')
+
+ggplot(tourney.teams, aes(SRS, factor(round.eliminated))) + geom_boxplot() + labs(title = 'Overall Strengths by Round Eliminated', x = 'Team Strength', y = 'Round Eliminated')
+
+ggplot(tourney.teams, aes(Conf.W, factor(round.eliminated))) + geom_boxplot() + labs(title = 'Confrence Wins by Round Eliminated', x = 'Confrence Wins', y = 'Round Eliminated')
+```
+
+The SOS by round eliminated plot exemplifies the relationship a team's strength of schedule had on their success in the 2023 NCAA tournament, and these boxplots make the message clear: teams who played a harder schedule undoubtedly found more success in the tournament. Up until round 1 (the tournament champion), the 25th percentile, 50th percentile, and 75th percentile teams eliminated in each round ranked lower in SOS than the respective teams eliminated in the round after them. While no causal relationship can be concluded from a correlational study, it was undeniably one of the best predictors of success in the 2023 tournament. The primary team that didn’t fit the general trend was the eventual national champions, the UConn Huskies. And while the Huskies play in a slightly easier conference, resulting in a lowered strength of schedule, they further validated the model by having the most conference wins and being ranked first overall in SRS. Statistical variance is a given in data analytics, but in 2023, strength of schedule, SRS, and conference wins were the clear predictors of a good team come March Madness.
+
+## Primary Limitation
+
+Ultimately, our research had one major limitation: our data only spanned one year. This made the trends and predictions very accurate for the 2023 season but difficult to implement in any other year. This limitation is especially prominent when examining teams during the tournament. To find which statistics predict tournament success, we had to define success, which, in this case, was how many rounds a team progressed. This particularly makes our data very volatile when viewing just one season, as one bad game early in the tournament may lead to an early exit and diminished success, even if the game was merely a fluke and doesn’t fully reflect their potential as a team. Moving forward, steps might be taken to incorporate several years' worth of March Madness data (and in-season data) to account for fluky statistics arising from just one trial
